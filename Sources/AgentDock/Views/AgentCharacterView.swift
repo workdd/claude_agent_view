@@ -736,7 +736,7 @@ struct AgentCharacterView: View {
 
     private var statusText: String {
         switch agent.status {
-        case .idle: return "Completed"
+        case .idle: return "Ready"
         case .working: return "In Progress"
         case .thinking: return "Analyzing..."
         }
