@@ -5,6 +5,8 @@ struct DockView: View {
     var onAgentTapped: (Agent) -> Void
 
     @State private var isCompact = false
+    @State private var draggedAgent: Agent?
+    @State private var hoveredForDrag: UUID?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,6 +17,7 @@ struct DockView: View {
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isCompact)
+        .onAppear { restoreSavedOrder() }
     }
 
     // MARK: - Full Dock (characters overflow above background)
@@ -29,8 +32,27 @@ struct DockView: View {
             // Characters overflow above the background
             HStack(spacing: 24) {
                 ForEach(viewModel.agents) { agent in
-                    AgentCharacterView(agent: agent, isCompact: false)
-                        .onTapGesture { onAgentTapped(agent) }
+                    AgentCharacterView(
+                        agent: agent,
+                        isCompact: false,
+                        lastMessage: agent.messages.last(where: { $0.role == .assistant })?.content
+                    )
+                    .onTapGesture { onAgentTapped(agent) }
+                    .overlay(alignment: .topTrailing) {
+                        if hoveredForDrag == agent.id {
+                            dragHandle
+                        }
+                    }
+                    .onHover { hovering in
+                        hoveredForDrag = hovering ? agent.id : nil
+                    }
+                    .draggable(agent.name) {
+                        dragPreview(for: agent)
+                    }
+                    .dropDestination(for: String.self) { items, _ in
+                        handleDrop(items: items, targetAgent: agent)
+                    }
+                    .opacity(draggedAgent?.id == agent.id ? 0.4 : 1.0)
                 }
             }
             .padding(.horizontal, 28)
@@ -57,6 +79,13 @@ struct DockView: View {
             ForEach(viewModel.agents) { agent in
                 AgentCharacterView(agent: agent, isCompact: true)
                     .onTapGesture { onAgentTapped(agent) }
+                    .draggable(agent.name) {
+                        dragPreview(for: agent)
+                    }
+                    .dropDestination(for: String.self) { items, _ in
+                        handleDrop(items: items, targetAgent: agent)
+                    }
+                    .opacity(draggedAgent?.id == agent.id ? 0.4 : 1.0)
             }
 
             Divider()
@@ -90,6 +119,76 @@ struct DockView: View {
         }
         .buttonStyle(.plain)
         .help(compact ? "Minimize dock" : "Expand dock")
+    }
+
+    // MARK: - Drag & Drop
+
+    private var dragHandle: some View {
+        VStack(spacing: 2) {
+            ForEach(0..<3, id: \.self) { _ in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Color.white.opacity(0.5))
+                    .frame(width: 12, height: 2)
+            }
+        }
+        .padding(4)
+        .background(RoundedRectangle(cornerRadius: 4).fill(.ultraThinMaterial))
+        .offset(x: 4, y: 4)
+        .transition(.opacity)
+        .animation(.easeInOut(duration: 0.2), value: hoveredForDrag)
+    }
+
+    private func dragPreview(for agent: Agent) -> some View {
+        Text(agent.name.capitalized)
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(.ultraThinMaterial))
+    }
+
+    private func handleDrop(items: [String], targetAgent: Agent) -> Bool {
+        guard let draggedName = items.first,
+              let fromIndex = viewModel.agents.firstIndex(where: { $0.name == draggedName }),
+              let toIndex = viewModel.agents.firstIndex(where: { $0.id == targetAgent.id }),
+              fromIndex != toIndex
+        else { return false }
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            viewModel.agents.move(
+                fromOffsets: IndexSet(integer: fromIndex),
+                toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex
+            )
+        }
+        persistAgentOrder()
+        return true
+    }
+
+    // MARK: - Order Persistence
+
+    private func persistAgentOrder() {
+        let names = viewModel.agents.map(\.name)
+        UserDefaults.standard.set(names, forKey: "agentOrder")
+    }
+
+    private func restoreSavedOrder() {
+        guard let savedNames = UserDefaults.standard.stringArray(forKey: "agentOrder"),
+              !savedNames.isEmpty
+        else { return }
+
+        var reordered: [Agent] = []
+        for name in savedNames {
+            if let agent = viewModel.agents.first(where: { $0.name == name }) {
+                reordered.append(agent)
+            }
+        }
+        // Append any agents not in saved order (newly added)
+        for agent in viewModel.agents where !reordered.contains(where: { $0.id == agent.id }) {
+            reordered.append(agent)
+        }
+
+        if reordered.count == viewModel.agents.count {
+            viewModel.agents = reordered
+        }
     }
 
     // MARK: - Backgrounds

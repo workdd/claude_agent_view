@@ -10,8 +10,10 @@ class AgentViewModel {
     var activeTasks: [CollaborationTask] = []
 
     private let agentFileService = AgentFileService()
+    private let notificationService = NotificationService.shared
 
     init() {
+        notificationService.requestPermission()
         agents = agentFileService.loadAgents()
 
         if let apiKey = KeychainService.load(key: "anthropic-api-key") {
@@ -65,6 +67,10 @@ class AgentViewModel {
         agents[index].messages.append(userMessage)
         agents[index].status = .thinking
 
+        // Track message sent
+        let agent = agents[index]
+        PerformanceService.shared.recordMessageSent(agentId: agent.id, agentName: agent.name)
+
         // Build full system prompt with team context
         let fullSystemPrompt = agents[index].systemPrompt + teamContext(for: agents[index])
 
@@ -81,6 +87,7 @@ class AgentViewModel {
 
     private func sendViaCLI(index: Int, content: String, systemPrompt: String) async {
         agents[index].status = .thinking
+        let sendStartTime = Date()
 
         // Prepare placeholder for streaming
         let placeholder = ChatMessage(role: .assistant, content: "")
@@ -118,6 +125,11 @@ class AgentViewModel {
                 },
                 onToolUse: { [weak self] toolName in
                     self?.agents[index].currentTool = toolName
+                    if let toolName {
+                        PerformanceService.shared.recordToolUse(
+                            agentId: agent.id, agentName: agent.name, tool: toolName
+                        )
+                    }
                 }
             )
 
@@ -132,6 +144,21 @@ class AgentViewModel {
             }
             agents[index].currentTool = nil
             agents[index].status = .idle
+
+            // Track response metrics
+            let responseTime = Date().timeIntervalSince(sendStartTime)
+            let tokenEstimate = max(fullResponse.count / 4, 1)
+            PerformanceService.shared.recordResponseReceived(
+                agentId: agent.id, agentName: agent.name,
+                responseTime: responseTime, tokenEstimate: tokenEstimate
+            )
+
+            // Notify user
+            let preview = fullResponse.isEmpty ? response : fullResponse
+            notificationService.notifyTaskComplete(
+                agentName: agent.name,
+                preview: String(preview.prefix(120))
+            )
         } catch {
             agents[index].currentTool = nil
             agents[index].status = .idle
@@ -154,6 +181,7 @@ class AgentViewModel {
             agents[index].messages.append(placeholder)
             let responseIndex = agents[index].messages.count - 1
             agents[index].status = .working
+            let sendStartTime = Date()
 
             let stream = service.streamMessage(
                 messages: Array(agents[index].messages.dropLast()),
@@ -171,6 +199,21 @@ class AgentViewModel {
             }
 
             agents[index].status = .idle
+
+            // Track response metrics
+            let responseTime = Date().timeIntervalSince(sendStartTime)
+            let tokenEstimate = max(fullResponse.count / 4, 1)
+            let agent = agents[index]
+            PerformanceService.shared.recordResponseReceived(
+                agentId: agent.id, agentName: agent.name,
+                responseTime: responseTime, tokenEstimate: tokenEstimate
+            )
+
+            // Notify user
+            notificationService.notifyTaskComplete(
+                agentName: agent.name,
+                preview: String(fullResponse.prefix(120))
+            )
         } catch {
             agents[index].status = .idle
             let errorMsg = ChatMessage(role: .assistant, content: "API Error: \(error.localizedDescription)")
@@ -190,6 +233,17 @@ class AgentViewModel {
                 await sendMessage(to: firstId, content: cleanMessage)
             }
             return
+        }
+
+        // Track collaboration start for each mentioned agent
+        for agentId in mentionedIds {
+            if let agent = agents.first(where: { $0.id == agentId }) {
+                PerformanceService.shared.addActivity(
+                    agentId: agentId, agentName: agent.name,
+                    type: .collaborationStarted,
+                    detail: "Collaboration with \(mentionedIds.count) agents"
+                )
+            }
         }
 
         var task = CollaborationTask(message: cleanMessage, targetAgentIds: mentionedIds)
@@ -263,6 +317,12 @@ class AgentViewModel {
             agents[index].messages.append(userMsg)
             agents[index].messages.append(assistantMsg)
         }
+
+        // Notify collaboration complete
+        let agentNames = mentionedIds.compactMap { id in
+            agents.first(where: { $0.id == id })?.name
+        }
+        notificationService.notifyCollaborationComplete(agentNames: agentNames)
     }
 
     // MARK: - Custom Agent Management

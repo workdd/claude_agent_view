@@ -5,6 +5,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var floatingPanel: FloatingPanel?
     var chatPanels: [UUID: ChatPanel] = [:]
     var settingsWindow: NSWindow?
+    var activityWindow: NSWindow?
+    var dashboardWindow: NSWindow?
     var statusItem: NSStatusItem?
     let viewModel = AgentViewModel()
 
@@ -128,6 +130,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Reset Position", action: #selector(resetPosition), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
+        menu.addItem(NSMenuItem(title: "Activity Timeline", action: #selector(openActivityTimeline), keyEquivalent: "t"))
+        menu.addItem(NSMenuItem(title: "Performance Dashboard", action: #selector(openDashboard), keyEquivalent: "d"))
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Open Characters Folder", action: #selector(openCharactersFolder), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Reload Characters", action: #selector(reloadCharacters), keyEquivalent: "r"))
         menu.addItem(NSMenuItem.separator())
@@ -147,6 +152,50 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func resetPosition() {
         positionPanelAtBottom()
         floatingPanel?.resizeForCompact(false, animated: true)
+    }
+
+    @objc private func openActivityTimeline() {
+        if let existing = activityWindow, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let view = ActivityTimelineView()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 500),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered, defer: false
+        )
+        window.title = "Activity Timeline"
+        window.contentView = NSHostingView(rootView: view)
+        window.center()
+        window.isReleasedWhenClosed = false
+        activityWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func openDashboard() {
+        if let existing = dashboardWindow, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let view = PerformanceDashboardView(viewModel: viewModel)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 480),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered, defer: false
+        )
+        window.title = "Performance Dashboard"
+        window.contentView = NSHostingView(rootView: view)
+        window.center()
+        window.isReleasedWhenClosed = false
+        dashboardWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func openCharactersFolder() {

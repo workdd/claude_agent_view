@@ -3,6 +3,7 @@ import SwiftUI
 struct AgentCharacterView: View {
     let agent: Agent
     var isCompact: Bool = false
+    var lastMessage: String? = nil
 
     @State private var isHovered = false
     @State private var showNamePopup = false
@@ -709,6 +710,15 @@ struct AgentCharacterView: View {
             .padding(.vertical, 3)
             .background(statusColor.opacity(0.12))
             .clipShape(Capsule())
+
+            if let msg = lastMessage, !msg.isEmpty {
+                Text(msg.count > 80 ? String(msg.prefix(80)) + "..." : msg)
+                    .font(.system(size: 9, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .frame(maxWidth: 140)
+                    .multilineTextAlignment(.center)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
