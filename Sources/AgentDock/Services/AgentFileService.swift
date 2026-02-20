@@ -141,4 +141,48 @@ class AgentFileService {
         fileMonitor?.cancel()
         fileMonitor = nil
     }
+
+    // MARK: - Create Custom Agent
+
+    func createAgent(
+        name: String,
+        description: String,
+        tools: [String],
+        model: String,
+        skills: [String],
+        systemPrompt: String
+    ) throws {
+        let fm = FileManager.default
+
+        // Ensure directory exists
+        if !fm.fileExists(atPath: agentsDirectory.path) {
+            try fm.createDirectory(at: agentsDirectory, withIntermediateDirectories: true)
+        }
+
+        let fileName = name.lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: "_", with: "-")
+        let fileURL = agentsDirectory.appendingPathComponent("\(fileName).md")
+
+        var content = "---\n"
+        content += "name: \(name.lowercased())\n"
+        content += "description: \(description)\n"
+        if !tools.isEmpty {
+            content += "tools: \(tools.joined(separator: ", "))\n"
+        }
+        content += "model: \(model)\n"
+        if !skills.isEmpty {
+            content += "skills: \(skills.joined(separator: ", "))\n"
+        }
+        content += "---\n\n"
+        content += systemPrompt
+
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+    }
+
+    // MARK: - Delete Agent File
+
+    func deleteAgent(filePath: String) throws {
+        try FileManager.default.removeItem(atPath: filePath)
+    }
 }

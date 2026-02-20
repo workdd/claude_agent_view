@@ -3,15 +3,17 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
+    <string>Claude Agent View</string>
+    <key>CFBundleDisplayName</key>
+    <string>Claude Agent View</string>
+    <key>CFBundleExecutable</key>
     <string>AgentDock</string>
     <key>CFBundleIdentifier</key>
-    <string>com.agentdock.app</string>
+    <string>com.claude-agent-view.app</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>1.1</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
-    <key>LSUIElement</key>
-    <true/>
+    <string>1.1</string>
     <key>NSMainStoryboardFile</key>
     <string></string>
 </dict>

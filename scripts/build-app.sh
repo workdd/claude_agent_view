@@ -3,12 +3,12 @@ set -e
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$PROJECT_DIR/build"
-APP_BUNDLE="$BUILD_DIR/AgentDock.app"
+APP_BUNDLE="$BUILD_DIR/Claude Agent View.app"
 CONTENTS="$APP_BUNDLE/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
 
-echo "Building AgentDock..."
+echo "Building Claude Agent View..."
 cd "$PROJECT_DIR"
 swift build -c release
 
@@ -35,4 +35,4 @@ fi
 
 echo ""
 echo "Build complete: $APP_BUNDLE"
-echo "Run: open $APP_BUNDLE"
+echo "Run: open \"$APP_BUNDLE\""

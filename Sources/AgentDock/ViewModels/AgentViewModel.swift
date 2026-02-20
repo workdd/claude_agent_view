@@ -6,20 +6,18 @@ class AgentViewModel {
     var agents: [Agent] = []
     var claudeService: ClaudeService?
     var cliService = ClaudeCLIService()
-    var useSubscription: Bool = true  // prefer CLI subscription by default
+    var useSubscription: Bool = true
     var activeTasks: [CollaborationTask] = []
 
     private let agentFileService = AgentFileService()
 
     init() {
-        // Load agents from ~/.claude/agents/ first, fallback to defaults
         agents = agentFileService.loadAgents()
 
         if let apiKey = KeychainService.load(key: "anthropic-api-key") {
             claudeService = ClaudeService(apiKey: apiKey)
         }
 
-        // Watch for agent file changes
         agentFileService.onAgentsChanged = { [weak self] newAgents in
             self?.agents = newAgents
         }
@@ -28,6 +26,34 @@ class AgentViewModel {
 
     deinit {
         agentFileService.stopWatching()
+    }
+
+    // MARK: - Team Context (Supervisor Architecture)
+
+    /// Builds a context string that makes the agent aware of its role,
+    /// the team structure, and the user as supervisor.
+    private func teamContext(for agent: Agent) -> String {
+        let otherAgents = agents.filter { $0.id != agent.id }
+            .map { "- \($0.name) (\($0.role))" }
+            .joined(separator: "\n")
+
+        return """
+
+        [Team Context]
+        You are \(agent.name), the \(agent.role) in a multi-agent team.
+        Your specialization: \(agent.agentDescription)
+        Model: \(agent.model)
+        Available tools: \(agent.tools.joined(separator: ", "))
+
+        The USER is the Supervisor who coordinates all agents.
+        When the Supervisor gives you a task, focus on your area of expertise.
+
+        Other team members:
+        \(otherAgents)
+
+        If a task falls outside your expertise, suggest which team member
+        would be better suited. Always be concise and action-oriented.
+        """
     }
 
     // MARK: - Send Message (single agent)
@@ -39,11 +65,13 @@ class AgentViewModel {
         agents[index].messages.append(userMessage)
         agents[index].status = .thinking
 
-        // Route to CLI subscription or API key
+        // Build full system prompt with team context
+        let fullSystemPrompt = agents[index].systemPrompt + teamContext(for: agents[index])
+
         if useSubscription && cliService.isAvailable {
-            await sendViaCLI(index: index, content: content)
+            await sendViaCLI(index: index, content: content, systemPrompt: fullSystemPrompt)
         } else if let service = claudeService {
-            await sendViaAPI(index: index, content: content, service: service)
+            await sendViaAPI(index: index, content: content, service: service, systemPrompt: fullSystemPrompt)
         } else {
             let errorMsg = ChatMessage(role: .assistant, content: "No connection. Open Settings to configure Claude subscription or API key.")
             agents[index].messages.append(errorMsg)
@@ -51,12 +79,12 @@ class AgentViewModel {
         }
     }
 
-    private func sendViaCLI(index: Int, content: String) async {
+    private func sendViaCLI(index: Int, content: String, systemPrompt: String) async {
         agents[index].status = .working
         do {
             let response = try await cliService.sendMessage(
                 prompt: content,
-                systemPrompt: agents[index].systemPrompt
+                systemPrompt: systemPrompt
             )
             let msg = ChatMessage(role: .assistant, content: response)
             agents[index].messages.append(msg)
@@ -68,7 +96,7 @@ class AgentViewModel {
         }
     }
 
-    private func sendViaAPI(index: Int, content: String, service: ClaudeService) async {
+    private func sendViaAPI(index: Int, content: String, service: ClaudeService, systemPrompt: String) async {
         do {
             var fullResponse = ""
             let placeholder = ChatMessage(role: .assistant, content: "")
@@ -78,7 +106,7 @@ class AgentViewModel {
 
             let stream = service.streamMessage(
                 messages: Array(agents[index].messages.dropLast()),
-                systemPrompt: agents[index].systemPrompt
+                systemPrompt: systemPrompt
             )
 
             for try await text in stream {
@@ -106,9 +134,7 @@ class AgentViewModel {
             from: content, agents: agents
         )
 
-        // If no mentions, this is not a collab message
         guard mentionedIds.count > 1 else {
-            // Single agent or no mentions — route to first mentioned or skip
             if let firstId = mentionedIds.first {
                 await sendMessage(to: firstId, content: cleanMessage)
             }
@@ -120,7 +146,6 @@ class AgentViewModel {
         activeTasks.append(task)
         let taskIndex = activeTasks.count - 1
 
-        // Send to all mentioned agents concurrently
         await withTaskGroup(of: (UUID, String).self) { group in
             for agentId in mentionedIds {
                 guard let agentIndex = agents.firstIndex(where: { $0.id == agentId }) else { continue }
@@ -130,14 +155,13 @@ class AgentViewModel {
                     allAgents: agents,
                     mentionedIds: mentionedIds
                 )
-                let augmentedPrompt = agent.systemPrompt + colabContext
+                let augmentedPrompt = agent.systemPrompt + teamContext(for: agent) + colabContext
 
                 group.addTask { [weak self] in
                     guard let self, let service = self.claudeService else {
                         return (agentId, "Error: No API key")
                     }
 
-                    // Mark agent working
                     await MainActor.run {
                         if let idx = self.agents.firstIndex(where: { $0.id == agentId }) {
                             self.agents[idx].status = .working
@@ -176,7 +200,6 @@ class AgentViewModel {
 
         activeTasks[taskIndex].status = .complete
 
-        // Format combined response and add to each agent's chat
         let combined = CollaborationService.formatCombinedResponse(
             task: activeTasks[taskIndex],
             agents: agents
@@ -189,6 +212,31 @@ class AgentViewModel {
             agents[index].messages.append(userMsg)
             agents[index].messages.append(assistantMsg)
         }
+    }
+
+    // MARK: - Custom Agent Management
+
+    func createCustomAgent(
+        name: String,
+        description: String,
+        tools: [String],
+        model: String,
+        skills: [String],
+        systemPrompt: String
+    ) throws {
+        try agentFileService.createAgent(
+            name: name,
+            description: description,
+            tools: tools,
+            model: model,
+            skills: skills,
+            systemPrompt: systemPrompt
+        )
+        // File watcher will auto-pick up the new agent
+    }
+
+    func deleteAgent(filePath: String) throws {
+        try agentFileService.deleteAgent(filePath: filePath)
     }
 
     // MARK: - Settings
@@ -204,7 +252,6 @@ class AgentViewModel {
 
     func reloadAgentsFromDisk() {
         let newAgents = agentFileService.loadAgents()
-        // Preserve messages and status from current agents
         for i in agents.indices {
             if let match = newAgents.firstIndex(where: { $0.name == agents[i].name }) {
                 var updated = newAgents[match]
@@ -213,7 +260,6 @@ class AgentViewModel {
                 agents[i] = updated
             }
         }
-        // Add any new agents
         for newAgent in newAgents {
             if !agents.contains(where: { $0.name == newAgent.name }) {
                 agents.append(newAgent)

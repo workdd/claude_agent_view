@@ -202,6 +202,7 @@ struct ConnectionTab: View {
 
 struct AgentsTab: View {
     let viewModel: AgentViewModel
+    @State private var showCreateSheet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -211,6 +212,14 @@ struct AgentsTab: View {
                 Text("~/.claude/agents/").font(.caption).foregroundStyle(.tertiary)
                 Button("Reload") { viewModel.reloadAgentsFromDisk() }
                     .font(.caption)
+                Button {
+                    showCreateSheet = true
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.body)
+                }
+                .buttonStyle(.plain)
+                .help("Add custom agent")
             }
 
             List(viewModel.agents) { agent in
@@ -219,6 +228,89 @@ struct AgentsTab: View {
             .listStyle(.inset(alternatesRowBackgrounds: true))
         }
         .padding(24)
+        .sheet(isPresented: $showCreateSheet) {
+            CreateAgentSheet(viewModel: viewModel, isPresented: $showCreateSheet)
+        }
+    }
+}
+
+// MARK: - Create Agent Sheet
+
+struct CreateAgentSheet: View {
+    let viewModel: AgentViewModel
+    @Binding var isPresented: Bool
+
+    @State private var name = ""
+    @State private var description = ""
+    @State private var model = "sonnet"
+    @State private var toolsText = "Read, Write, Edit, Glob, Grep, Bash"
+    @State private var skillsText = ""
+    @State private var systemPrompt = ""
+    @State private var errorMessage = ""
+
+    private let models = ["sonnet", "opus", "haiku"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("New Custom Agent")
+                .font(.headline)
+
+            Form {
+                TextField("Name:", text: $name, prompt: Text("e.g. devops"))
+                TextField("Description:", text: $description, prompt: Text("e.g. DevOps and infrastructure agent"))
+                Picker("Model:", selection: $model) {
+                    ForEach(models, id: \.self) { Text($0) }
+                }
+                TextField("Tools:", text: $toolsText, prompt: Text("comma-separated"))
+                    .font(.system(.body, design: .monospaced))
+                TextField("Skills:", text: $skillsText, prompt: Text("comma-separated (optional)"))
+
+                VStack(alignment: .leading) {
+                    Text("System Prompt:")
+                    TextEditor(text: $systemPrompt)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 100)
+                        .border(Color.gray.opacity(0.2))
+                }
+            }
+
+            if !errorMessage.isEmpty {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel") { isPresented = false }
+                    .keyboardShortcut(.cancelAction)
+                Button("Create") { createAgent() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(name.isEmpty || description.isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 500, height: 440)
+    }
+
+    private func createAgent() {
+        let tools = toolsText.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let skills = skillsText.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+
+        let prompt = systemPrompt.isEmpty
+            ? "You are \(name), a specialized agent for \(description)."
+            : systemPrompt
+
+        do {
+            try viewModel.createCustomAgent(
+                name: name, description: description,
+                tools: tools, model: model,
+                skills: skills, systemPrompt: prompt
+            )
+            isPresented = false
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
