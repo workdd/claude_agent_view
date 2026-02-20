@@ -13,24 +13,43 @@ struct StatusBadgeView: View {
         }
     }
 
+    private var label: String {
+        switch status {
+        case .idle: return ""
+        case .working: return ""
+        case .thinking: return ""
+        }
+    }
+
     var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 10, height: 10)
-            .overlay(
+        ZStack {
+            // Pulse ring for non-idle states
+            if status != .idle {
                 Circle()
                     .stroke(color.opacity(0.4), lineWidth: 2)
-                    .scaleEffect(isPulsing ? 1.8 : 1.0)
-                    .opacity(isPulsing ? 0 : 1)
-            )
-            .onChange(of: status, initial: true) { _, newValue in
-                isPulsing = (newValue == .thinking)
+                    .scaleEffect(isPulsing ? 2.2 : 1.0)
+                    .opacity(isPulsing ? 0 : 0.8)
+                    .frame(width: 12, height: 12)
             }
-            .animation(
-                status == .thinking
-                    ? .easeInOut(duration: 1.0).repeatForever(autoreverses: false)
-                    : .default,
-                value: isPulsing
-            )
+
+            // Main dot
+            Circle()
+                .fill(color)
+                .frame(width: 12, height: 12)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white, lineWidth: 2)
+                )
+                .shadow(color: color.opacity(0.5), radius: 3)
+        }
+        .onChange(of: status, initial: true) { _, newValue in
+            isPulsing = (newValue != .idle)
+        }
+        .animation(
+            status != .idle
+                ? .easeInOut(duration: 1.2).repeatForever(autoreverses: false)
+                : .default,
+            value: isPulsing
+        )
     }
 }

@@ -17,7 +17,7 @@ class FloatingPanel: NSPanel {
 
     convenience init() {
         self.init(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 210),
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 230),
             styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,
             defer: false

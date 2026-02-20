@@ -17,23 +17,37 @@ struct DockView: View {
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isCompact)
     }
 
-    // MARK: - Full Dock (3D characters)
+    // MARK: - Full Dock (characters overflow above background)
 
     private var fullDock: some View {
-        HStack(spacing: 24) {
-            ForEach(viewModel.agents) { agent in
-                AgentCharacterView(agent: agent, isCompact: false)
-                    .onTapGesture { onAgentTapped(agent) }
+        ZStack(alignment: .bottom) {
+            // Background bar (shorter, sits at bottom)
+            dockBackground
+                .frame(height: 70)
+                .padding(.horizontal, 8)
+
+            // Characters overflow above the background
+            HStack(spacing: 24) {
+                ForEach(viewModel.agents) { agent in
+                    AgentCharacterView(agent: agent, isCompact: false)
+                        .onTapGesture { onAgentTapped(agent) }
+                }
+            }
+            .padding(.horizontal, 28)
+            .padding(.bottom, -10)
+
+            // Toggle button
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    compactToggleButton(compact: true)
+                        .padding(.trailing, 18)
+                        .padding(.bottom, 6)
+                }
             }
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 4)
-        .padding(.bottom, 14)
-        .background { dockBackground }
-        .overlay(alignment: .topTrailing) {
-            compactToggleButton(compact: true)
-                .padding(8)
-        }
+        .frame(height: 220)
     }
 
     // MARK: - Compact Dock (minimal)
@@ -63,7 +77,6 @@ struct DockView: View {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                 isCompact.toggle()
             }
-            // Post notification for panel resize
             NotificationCenter.default.post(
                 name: .dockModeChanged,
                 object: nil,
@@ -72,7 +85,7 @@ struct DockView: View {
         } label: {
             Image(systemName: compact ? "chevron.down.circle.fill" : "chevron.up.circle.fill")
                 .font(.system(size: 14))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.6))
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)
