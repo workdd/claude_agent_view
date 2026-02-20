@@ -13,11 +13,18 @@ struct ChatBubbleView: View {
 
             VStack(alignment: isUser ? .trailing : .leading, spacing: 2) {
                 Text(message.content)
+                    .textSelection(.enabled)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(isUser ? Color.blue : Color.gray.opacity(0.2))
                     .foregroundStyle(isUser ? .white : .primary)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .contextMenu {
+                        Button("Copy") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(message.content, forType: .string)
+                        }
+                    }
 
                 Text(message.timestamp, style: .time)
                     .font(.caption2)

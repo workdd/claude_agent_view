@@ -80,19 +80,70 @@ class AgentViewModel {
     }
 
     private func sendViaCLI(index: Int, content: String, systemPrompt: String) async {
-        agents[index].status = .working
+        agents[index].status = .thinking
+
+        // Prepare placeholder for streaming
+        let placeholder = ChatMessage(role: .assistant, content: "")
+        agents[index].messages.append(placeholder)
+        let responseIndex = agents[index].messages.count - 1
+        var fullResponse = ""
+
+        let agent = agents[index]
+
+        // Build skills context for system prompt
+        var enhancedPrompt = systemPrompt
+        if !agent.skills.isEmpty {
+            enhancedPrompt += "\n\n[Available Skills]\n"
+            enhancedPrompt += agent.skills.map { "- /\($0)" }.joined(separator: "\n")
+            enhancedPrompt += "\nYou can use these skills when appropriate for the task."
+        }
+
         do {
-            let response = try await cliService.sendMessage(
+            agents[index].status = .working
+
+            let response = try await cliService.sendAgentMessage(
                 prompt: content,
-                systemPrompt: systemPrompt
+                agentName: agent.name,
+                systemPrompt: enhancedPrompt,
+                tools: agent.tools,
+                model: agent.model,
+                onChunk: { [weak self] chunk in
+                    fullResponse += chunk
+                    self?.agents[index].messages[responseIndex] = ChatMessage(
+                        id: placeholder.id,
+                        role: .assistant,
+                        content: fullResponse,
+                        timestamp: placeholder.timestamp
+                    )
+                },
+                onToolUse: { [weak self] toolName in
+                    self?.agents[index].currentTool = toolName
+                }
             )
-            let msg = ChatMessage(role: .assistant, content: response)
-            agents[index].messages.append(msg)
+
+            // Final update with complete response
+            if !response.isEmpty {
+                agents[index].messages[responseIndex] = ChatMessage(
+                    id: placeholder.id,
+                    role: .assistant,
+                    content: response,
+                    timestamp: placeholder.timestamp
+                )
+            }
+            agents[index].currentTool = nil
             agents[index].status = .idle
         } catch {
+            agents[index].currentTool = nil
             agents[index].status = .idle
-            let errorMsg = ChatMessage(role: .assistant, content: "CLI Error: \(error.localizedDescription)")
-            agents[index].messages.append(errorMsg)
+            if fullResponse.isEmpty {
+                agents[index].messages[responseIndex] = ChatMessage(
+                    id: placeholder.id,
+                    role: .assistant,
+                    content: "Error: \(error.localizedDescription)",
+                    timestamp: placeholder.timestamp
+                )
+            }
+            // If we got partial response, keep it
         }
     }
 

@@ -6,6 +6,7 @@ struct AgentCharacterView: View {
 
     @State private var isHovered = false
     @State private var showNamePopup = false
+    @State private var isBlinking = false
 
     private var phaseOffset: Double {
         Double(agent.name.hashValue & 0xFF) / 40.0
@@ -18,18 +19,18 @@ struct AgentCharacterView: View {
 
     private var hairColor: Color {
         switch agent.character {
-        case "bear": return Color(red: 0.3, green: 0.22, blue: 0.15)   // dark brown
-        case "pig": return Color(red: 0.6, green: 0.3, blue: 0.55)     // purple-ish
-        case "cat": return Color(red: 0.35, green: 0.35, blue: 0.4)    // dark gray
+        case "bear": return Color(red: 0.3, green: 0.22, blue: 0.15)
+        case "pig": return Color(red: 0.6, green: 0.3, blue: 0.55)
+        case "cat": return Color(red: 0.35, green: 0.35, blue: 0.4)
         default: return Color(red: 0.4, green: 0.3, blue: 0.2)
         }
     }
 
     private var outfitColor: Color {
         switch agent.character {
-        case "bear": return Color(red: 0.25, green: 0.45, blue: 0.75)  // blue hoodie
-        case "pig": return Color(red: 0.80, green: 0.40, blue: 0.65)   // pink/creative
-        case "cat": return Color(red: 0.35, green: 0.60, blue: 0.50)   // green formal
+        case "bear": return Color(red: 0.25, green: 0.45, blue: 0.75)
+        case "pig": return Color(red: 0.80, green: 0.40, blue: 0.65)
+        case "cat": return Color(red: 0.35, green: 0.60, blue: 0.50)
         default: return .gray
         }
     }
@@ -40,15 +41,6 @@ struct AgentCharacterView: View {
         case "pig": return Color(red: 0.92, green: 0.55, blue: 0.75)
         case "cat": return Color(red: 0.50, green: 0.75, blue: 0.62)
         default: return .gray.opacity(0.7)
-        }
-    }
-
-    private var accentColor: Color {
-        switch agent.character {
-        case "bear": return .blue
-        case "pig": return .pink
-        case "cat": return .teal
-        default: return .gray
         }
     }
 
@@ -77,7 +69,6 @@ struct AgentCharacterView: View {
                 .frame(width: 36, height: 36)
                 .overlay(Circle().stroke(Color.white.opacity(0.3), lineWidth: 1))
 
-            // Mini face
             VStack(spacing: 1) {
                 HStack(spacing: 4) {
                     Circle().fill(Color(white: 0.2)).frame(width: 3, height: 3)
@@ -105,24 +96,8 @@ struct AgentCharacterView: View {
     // MARK: - Full 3D Animated View
 
     private var fullView: some View {
-        VStack(spacing: 0) {
-            // Name popup
-            ZStack {
-                if showNamePopup {
-                    namePopupView
-                        .transition(
-                            .asymmetric(
-                                insertion: .scale(scale: 0.8)
-                                    .combined(with: .opacity)
-                                    .combined(with: .offset(y: 8)),
-                                removal: .opacity
-                            )
-                        )
-                }
-            }
-            .frame(height: 48)
-
-            // 3D Animated Character (Metal-rendered for crisp quality)
+        ZStack(alignment: .top) {
+            // 3D Animated Character
             TimelineView(.animation) { context in
                 let t = context.date.timeIntervalSinceReferenceDate + phaseOffset
                 let speed = statusAnimSpeed
@@ -134,14 +109,36 @@ struct AgentCharacterView: View {
                 let breathe = 1.0 + sin(t * 1.2 * speed) * 0.02 * intensity
                 let shadowShrink = 1.0 - abs(sin(t * 1.5 * speed)) * 0.12
 
+                // Trigger blink randomly
+                let _ = triggerBlinkIfNeeded(t: t)
+
                 characterScene(
                     floatY: floatY, tiltX: tiltX, tiltY: tiltY,
                     breathe: breathe, shadowShrink: shadowShrink
                 )
             }
+            .padding(.top, 70)
+
+            // Always-visible status + tool label
+            statusLabel
+                .zIndex(5)
+
+            // Name/role popup on hover
+            if showNamePopup {
+                namePopupView
+                    .offset(y: -12)
+                    .transition(
+                        .asymmetric(
+                            insertion: .scale(scale: 0.8)
+                                .combined(with: .opacity)
+                                .combined(with: .offset(y: 8)),
+                            removal: .opacity
+                        )
+                    )
+                    .zIndex(10)
+            }
         }
-        .frame(width: 120, height: 195)
-        .drawingGroup(opaque: false)  // Metal-accelerated rendering for crisp output
+        .frame(width: 130, height: 240)
         .onHover { hovering in
             isHovered = hovering
             withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
@@ -149,6 +146,79 @@ struct AgentCharacterView: View {
             }
         }
         .contentShape(Rectangle())
+    }
+
+    // MARK: - Blink Timer (via TimelineView)
+
+    @State private var lastBlinkTime: Double = 0
+    @State private var nextBlinkInterval: Double = 4.0
+
+    private func triggerBlinkIfNeeded(t: Double) -> Bool {
+        if t - lastBlinkTime > nextBlinkInterval && !isBlinking {
+            DispatchQueue.main.async {
+                lastBlinkTime = t
+                nextBlinkInterval = Double.random(in: 2.5...6.0)
+                withAnimation(.easeInOut(duration: 0.08)) { isBlinking = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                    withAnimation(.easeInOut(duration: 0.08)) { isBlinking = false }
+                }
+            }
+        }
+        return true
+    }
+
+    // MARK: - Always-Visible Status Label
+
+    private var statusLabel: some View {
+        VStack(spacing: 2) {
+            HStack(spacing: 4) {
+                Circle().fill(statusColor).frame(width: 6, height: 6)
+                Text(statusText)
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .foregroundStyle(statusColor)
+            }
+
+            // Tool HUD: show current tool being used
+            if let tool = agent.currentTool {
+                HStack(spacing: 3) {
+                    Image(systemName: toolIcon(for: tool))
+                        .font(.system(size: 7))
+                        .foregroundStyle(.white.opacity(0.8))
+                    Text(tool)
+                        .font(.system(size: 8, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.9))
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    Capsule().fill(statusColor.opacity(0.7))
+                )
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .overlay(Capsule().stroke(statusColor.opacity(0.3), lineWidth: 0.5))
+        )
+        .offset(y: 56)
+        .animation(.spring(response: 0.3), value: agent.currentTool)
+    }
+
+    private func toolIcon(for tool: String) -> String {
+        switch tool.lowercased() {
+        case "read": return "doc.text"
+        case "write": return "square.and.pencil"
+        case "edit": return "pencil"
+        case "bash": return "terminal"
+        case "glob": return "folder.badge.gearshape"
+        case "grep": return "magnifyingglass"
+        case "webfetch": return "globe"
+        case "websearch": return "magnifyingglass.circle"
+        default: return "wrench"
+        }
     }
 
     // MARK: - 3D Character Scene
@@ -162,12 +232,11 @@ struct AgentCharacterView: View {
             Ellipse()
                 .fill(
                     RadialGradient(
-                        colors: [Color.black.opacity(0.20), Color.clear],
-                        center: .center, startRadius: 0, endRadius: 28
+                        colors: [Color.black.opacity(0.18), Color.black.opacity(0.05), Color.clear],
+                        center: .center, startRadius: 0, endRadius: 32
                     )
                 )
-                .frame(width: 52 * shadowShrink, height: 10 * shadowShrink)
-                .blur(radius: 3)
+                .frame(width: 58 * shadowShrink, height: 14 * shadowShrink)
                 .offset(y: 52)
 
             // Pedestal
@@ -179,11 +248,13 @@ struct AgentCharacterView: View {
                 .scaleEffect(CGFloat(breathe))
                 .rotation3DEffect(.degrees(tiltX), axis: (x: 1, y: 0, z: 0), perspective: 0.5)
                 .rotation3DEffect(.degrees(tiltY), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
-                .shadow(color: outfitColor.opacity(0.3), radius: 10, y: 8)
         }
-        .scaleEffect(isHovered ? 1.18 : 1.0)
+        .scaleEffect(isHovered ? 1.0 : 0.85)
         .rotation3DEffect(.degrees(isHovered ? -10 : 0), axis: (x: 1, y: 0, z: 0), anchor: .bottom, perspective: 0.6)
         .rotation3DEffect(.degrees(isHovered ? 3 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.8)
+        // Clay double shadow (AFTER scale for resolution)
+        .shadow(color: Color.white.opacity(0.35), radius: 4, x: -2, y: -2)  // top highlight
+        .shadow(color: outfitColor.opacity(0.25), radius: 8, x: 3, y: 6)    // bottom depth
         .animation(.spring(response: 0.45, dampingFraction: 0.65), value: isHovered)
     }
 
@@ -191,19 +262,12 @@ struct AgentCharacterView: View {
 
     private var humanAvatar: some View {
         ZStack {
-            // Ambient glow
-            Circle()
-                .fill(accentColor.opacity(isHovered ? 0.30 : 0.12))
-                .frame(width: 95, height: 95)
-                .blur(radius: 18)
-
             VStack(spacing: -6) {
                 // HEAD
                 ZStack {
-                    // Hair back layer (behind head)
                     hairBack
 
-                    // Head circle with skin gradient (3D lit)
+                    // Head circle with skin gradient
                     Circle()
                         .fill(
                             RadialGradient(
@@ -214,7 +278,6 @@ struct AgentCharacterView: View {
                         )
                         .frame(width: 56, height: 56)
                         .overlay(
-                            // Cheek blush
                             HStack(spacing: 26) {
                                 Circle().fill(Color.pink.opacity(0.18)).frame(width: 10, height: 10)
                                 Circle().fill(Color.pink.opacity(0.18)).frame(width: 10, height: 10)
@@ -222,7 +285,7 @@ struct AgentCharacterView: View {
                             .offset(y: 6)
                         )
 
-                    // Head highlight (3D light)
+                    // Head highlight
                     Circle()
                         .fill(
                             RadialGradient(
@@ -233,29 +296,19 @@ struct AgentCharacterView: View {
                         )
                         .frame(width: 56, height: 56)
 
-                    // Hair front layer
                     hairFront
 
-                    // Eyes
-                    HStack(spacing: 14) {
-                        eye
-                        eye
-                    }
-                    .offset(y: -2)
+                    // Eyes with blink + status expression
+                    statusEyes
 
-                    // Mouth (smile)
-                    SmilePath()
-                        .stroke(Color(red: 0.7, green: 0.35, blue: 0.30), lineWidth: 2.0)
-                        .frame(width: 12, height: 6)
-                        .offset(y: 12)
+                    // Mouth changes with status
+                    statusMouth
 
-                    // Character-specific accessory on head
                     headAccessory
                 }
 
                 // BODY / TORSO
                 ZStack {
-                    // Torso shape
                     RoundedRectangle(cornerRadius: 16)
                         .fill(
                             LinearGradient(
@@ -265,7 +318,6 @@ struct AgentCharacterView: View {
                         )
                         .frame(width: 54, height: 36)
 
-                    // Torso highlight
                     RoundedRectangle(cornerRadius: 16)
                         .fill(
                             LinearGradient(
@@ -275,12 +327,11 @@ struct AgentCharacterView: View {
                         )
                         .frame(width: 54, height: 36)
 
-                    // Outfit detail
                     outfitDetail
                 }
             }
 
-            // Status ring
+            // Status ring (active states only)
             if agent.status != .idle {
                 Circle()
                     .stroke(
@@ -293,29 +344,138 @@ struct AgentCharacterView: View {
                     .frame(width: 82, height: 82)
                     .offset(y: -2)
             }
-
-            StatusBadgeView(status: agent.status)
-                .offset(x: 30, y: -30)
         }
     }
 
-    // MARK: - Eye
+    // MARK: - Status-Based Eyes
 
-    private var eye: some View {
+    private var statusEyes: some View {
+        Group {
+            switch agent.status {
+            case .idle:
+                // Normal happy eyes with blink
+                HStack(spacing: 14) {
+                    eyeNormal
+                    eyeNormal
+                }
+                .offset(y: -2)
+
+            case .working:
+                // Focused squint eyes (narrowed)
+                HStack(spacing: 14) {
+                    eyeSquint
+                    eyeSquint
+                }
+                .offset(y: -2)
+
+            case .thinking:
+                // One eye up, looking to the side
+                HStack(spacing: 14) {
+                    eyeNormal
+                    eyeLookUp
+                }
+                .offset(y: -2)
+            }
+        }
+    }
+
+    // MARK: - Status-Based Mouth
+
+    private var statusMouth: some View {
+        Group {
+            switch agent.status {
+            case .idle:
+                // Happy smile
+                SmilePath()
+                    .stroke(Color(red: 0.7, green: 0.35, blue: 0.30), lineWidth: 2.0)
+                    .frame(width: 12, height: 6)
+                    .offset(y: 12)
+
+            case .working:
+                // Determined small mouth
+                Capsule()
+                    .fill(Color(red: 0.7, green: 0.35, blue: 0.30))
+                    .frame(width: 8, height: 3)
+                    .offset(y: 13)
+
+            case .thinking:
+                // "Hmm" offset small circle
+                Circle()
+                    .fill(Color(red: 0.7, green: 0.35, blue: 0.30))
+                    .frame(width: 6, height: 6)
+                    .offset(x: 3, y: 13)
+            }
+        }
+    }
+
+    // MARK: - Eye Variants
+
+    private var eyeNormal: some View {
         ZStack {
             Ellipse()
                 .fill(Color.white)
-                .frame(width: 11, height: 12)
-                .shadow(color: Color.black.opacity(0.08), radius: 1, y: 1)
-            Circle()
-                .fill(Color(white: 0.12))
-                .frame(width: 6, height: 6)
-                .offset(y: 0.5)
-            Circle()
-                .fill(Color.white.opacity(0.9))
-                .frame(width: 2.5, height: 2.5)
-                .offset(x: 1.2, y: -1.2)
+                .frame(width: 11, height: isBlinking ? 1.5 : 12)
+                .overlay(
+                    Ellipse().stroke(Color.black.opacity(0.06), lineWidth: 0.5)
+                )
+            if !isBlinking {
+                Circle()
+                    .fill(Color(white: 0.12))
+                    .frame(width: 6, height: 6)
+                    .offset(y: 0.5)
+                Circle()
+                    .fill(Color.white.opacity(0.9))
+                    .frame(width: 2.5, height: 2.5)
+                    .offset(x: 1.2, y: -1.2)
+            }
         }
+        .animation(.easeInOut(duration: 0.08), value: isBlinking)
+    }
+
+    private var eyeSquint: some View {
+        // Narrowed focused eye
+        ZStack {
+            Ellipse()
+                .fill(Color.white)
+                .frame(width: 11, height: isBlinking ? 1.5 : 7)
+                .overlay(
+                    Ellipse().stroke(Color.black.opacity(0.06), lineWidth: 0.5)
+                )
+            if !isBlinking {
+                Circle()
+                    .fill(Color(white: 0.12))
+                    .frame(width: 5.5, height: 5.5)
+                    .offset(y: 0)
+                Circle()
+                    .fill(Color.white.opacity(0.9))
+                    .frame(width: 2, height: 2)
+                    .offset(x: 1, y: -1)
+            }
+        }
+        .animation(.easeInOut(duration: 0.08), value: isBlinking)
+    }
+
+    private var eyeLookUp: some View {
+        // Eye looking upward (thinking)
+        ZStack {
+            Ellipse()
+                .fill(Color.white)
+                .frame(width: 11, height: isBlinking ? 1.5 : 12)
+                .overlay(
+                    Ellipse().stroke(Color.black.opacity(0.06), lineWidth: 0.5)
+                )
+            if !isBlinking {
+                Circle()
+                    .fill(Color(white: 0.12))
+                    .frame(width: 6, height: 6)
+                    .offset(x: 1.5, y: -2)  // looking up-right
+                Circle()
+                    .fill(Color.white.opacity(0.9))
+                    .frame(width: 2.5, height: 2.5)
+                    .offset(x: 2.5, y: -3)
+            }
+        }
+        .animation(.easeInOut(duration: 0.08), value: isBlinking)
     }
 
     // MARK: - Hair Variations
@@ -324,7 +484,6 @@ struct AgentCharacterView: View {
     private var hairBack: some View {
         switch agent.character {
         case "pig":
-            // Long hair back
             Ellipse()
                 .fill(hairColor)
                 .frame(width: 60, height: 64)
@@ -338,52 +497,31 @@ struct AgentCharacterView: View {
     private var hairFront: some View {
         switch agent.character {
         case "bear":
-            // Short spiky hair
             ZStack {
-                Capsule()
-                    .fill(hairColor)
-                    .frame(width: 56, height: 24)
-                    .offset(y: -20)
+                Capsule().fill(hairColor).frame(width: 56, height: 24).offset(y: -20)
                 HStack(spacing: 3) {
                     ForEach(0..<5, id: \.self) { i in
-                        Capsule()
-                            .fill(hairColor)
+                        Capsule().fill(hairColor)
                             .frame(width: 7, height: 12 + CGFloat(i % 2) * 5)
                     }
                 }
                 .offset(y: -30)
             }
         case "pig":
-            // Side-swept bangs
             ZStack {
-                Capsule()
-                    .fill(hairColor)
-                    .frame(width: 58, height: 20)
-                    .offset(y: -20)
-                Capsule()
-                    .fill(hairColor)
-                    .frame(width: 32, height: 14)
-                    .rotationEffect(.degrees(-15))
-                    .offset(x: -12, y: -18)
+                Capsule().fill(hairColor).frame(width: 58, height: 20).offset(y: -20)
+                Capsule().fill(hairColor).frame(width: 32, height: 14)
+                    .rotationEffect(.degrees(-15)).offset(x: -12, y: -18)
             }
         case "cat":
-            // Neat combed hair
             ZStack {
-                Capsule()
-                    .fill(hairColor)
-                    .frame(width: 58, height: 22)
-                    .offset(y: -20)
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(hairColor)
+                Capsule().fill(hairColor).frame(width: 58, height: 22).offset(y: -20)
+                RoundedRectangle(cornerRadius: 4).fill(hairColor)
                     .frame(width: 16, height: 10)
-                    .rotationEffect(.degrees(10))
-                    .offset(x: 20, y: -20)
+                    .rotationEffect(.degrees(10)).offset(x: 20, y: -20)
             }
         default:
-            Capsule()
-                .fill(hairColor)
-                .frame(width: 56, height: 22)
-                .offset(y: -20)
+            Capsule().fill(hairColor).frame(width: 56, height: 22).offset(y: -20)
         }
     }
 
@@ -393,17 +531,10 @@ struct AgentCharacterView: View {
     private var headAccessory: some View {
         switch agent.character {
         case "cat":
-            // Round glasses
             HStack(spacing: 3) {
-                Circle()
-                    .stroke(Color(white: 0.25), lineWidth: 1.8)
-                    .frame(width: 16, height: 16)
-                Rectangle()
-                    .fill(Color(white: 0.25))
-                    .frame(width: 4, height: 1.8)
-                Circle()
-                    .stroke(Color(white: 0.25), lineWidth: 1.8)
-                    .frame(width: 16, height: 16)
+                Circle().stroke(Color(white: 0.25), lineWidth: 1.8).frame(width: 16, height: 16)
+                Rectangle().fill(Color(white: 0.25)).frame(width: 4, height: 1.8)
+                Circle().stroke(Color(white: 0.25), lineWidth: 1.8).frame(width: 16, height: 16)
             }
             .offset(y: -2)
         default:
@@ -417,7 +548,6 @@ struct AgentCharacterView: View {
     private var outfitDetail: some View {
         switch agent.character {
         case "bear":
-            // Hoodie strings + code icon
             VStack(spacing: 2) {
                 HStack(spacing: 10) {
                     Capsule().fill(Color.white.opacity(0.4)).frame(width: 2, height: 8)
@@ -428,7 +558,6 @@ struct AgentCharacterView: View {
                     .foregroundStyle(Color.white.opacity(0.6))
             }
         case "pig":
-            // Creative palette dots
             HStack(spacing: 4) {
                 Circle().fill(Color.red.opacity(0.5)).frame(width: 4, height: 4)
                 Circle().fill(Color.yellow.opacity(0.5)).frame(width: 4, height: 4)
@@ -436,25 +565,15 @@ struct AgentCharacterView: View {
             }
             .offset(y: 2)
         case "cat":
-            // Formal shirt collar + tie hint
             VStack(spacing: 0) {
-                // Collar
                 HStack(spacing: 12) {
-                    Triangle()
-                        .fill(Color.white.opacity(0.5))
-                        .frame(width: 8, height: 6)
-                        .rotationEffect(.degrees(15))
-                    Triangle()
-                        .fill(Color.white.opacity(0.5))
-                        .frame(width: 8, height: 6)
-                        .rotationEffect(.degrees(-15))
-                        .scaleEffect(x: -1)
+                    Triangle().fill(Color.white.opacity(0.5))
+                        .frame(width: 8, height: 6).rotationEffect(.degrees(15))
+                    Triangle().fill(Color.white.opacity(0.5))
+                        .frame(width: 8, height: 6).rotationEffect(.degrees(-15)).scaleEffect(x: -1)
                 }
                 .offset(y: -6)
-
-                Rectangle()
-                    .fill(Color.red.opacity(0.4))
-                    .frame(width: 4, height: 10)
+                Rectangle().fill(Color.red.opacity(0.4)).frame(width: 4, height: 10)
             }
         default:
             EmptyView()
@@ -502,7 +621,6 @@ struct AgentCharacterView: View {
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            // Status badge with color
             HStack(spacing: 4) {
                 Circle().fill(statusColor).frame(width: 7, height: 7)
                 Text(statusText)
@@ -515,16 +633,7 @@ struct AgentCharacterView: View {
             .clipShape(Capsule())
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
-                )
-                .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
-        }
+        .padding(.vertical, 6)
     }
 
     // MARK: - Status Helpers

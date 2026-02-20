@@ -12,6 +12,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupAppIcon()
         setupMenuBar()
         setupFloatingPanel()
+        setupGlobalShortcut()
     }
 
     // MARK: - App Icon (Programmatic)
@@ -170,6 +171,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // MARK: - Global Shortcut (Ctrl+Option+Space)
+
+    private func setupGlobalShortcut() {
+        NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            // Ctrl + Option + Space
+            if event.modifierFlags.contains([.control, .option]),
+               event.keyCode == 49 {  // 49 = Space
+                DispatchQueue.main.async {
+                    self?.toggleDock()
+                }
+            }
+        }
+        // Also monitor local events (when app is focused)
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.modifierFlags.contains([.control, .option]),
+               event.keyCode == 49 {
+                DispatchQueue.main.async {
+                    self?.toggleDock()
+                }
+                return nil  // consume the event
+            }
+            return event
+        }
+    }
+
+    @objc private func toggleDock() {
+        guard let panel = floatingPanel else { return }
+        if panel.isVisible {
+            panel.orderOut(nil)
+        } else {
+            panel.orderFront(nil)
+        }
     }
 
     // MARK: - Chat Windows

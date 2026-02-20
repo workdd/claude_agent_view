@@ -22,6 +22,9 @@ struct Agent: Identifiable {
     var skills: [String]
     var filePath: String?  // path to the .md file on disk
 
+    // Real-time tool usage display
+    var currentTool: String?
+
     init(
         id: UUID = UUID(),
         name: String,
@@ -34,7 +37,8 @@ struct Agent: Identifiable {
         tools: [String] = [],
         model: String = "sonnet",
         skills: [String] = [],
-        filePath: String? = nil
+        filePath: String? = nil,
+        currentTool: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -48,6 +52,7 @@ struct Agent: Identifiable {
         self.model = model
         self.skills = skills
         self.filePath = filePath
+        self.currentTool = currentTool
     }
 }
 
