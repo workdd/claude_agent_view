@@ -128,6 +128,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Reset Position", action: #selector(resetPosition), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
+        menu.addItem(NSMenuItem(title: "Open Characters Folder", action: #selector(openCharactersFolder), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Reload Characters", action: #selector(reloadCharacters), keyEquivalent: "r"))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
@@ -145,6 +147,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func resetPosition() {
         positionPanelAtBottom()
         floatingPanel?.resizeForCompact(false, animated: true)
+    }
+
+    @objc private func openCharactersFolder() {
+        CharacterImageService.shared.openInFinder()
+    }
+
+    @objc private func reloadCharacters() {
+        CharacterImageService.shared.clearCache()
     }
 
     @objc private func openSettings() {

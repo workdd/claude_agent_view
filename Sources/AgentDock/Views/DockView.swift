@@ -95,13 +95,33 @@ struct DockView: View {
     // MARK: - Backgrounds
 
     private var dockBackground: some View {
-        RoundedRectangle(cornerRadius: 22)
+        RoundedRectangle(cornerRadius: 24)
             .fill(.ultraThinMaterial)
             .overlay(
-                RoundedRectangle(cornerRadius: 22)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.4, green: 0.35, blue: 0.7).opacity(0.08),
+                                Color(red: 0.3, green: 0.4, blue: 0.8).opacity(0.05),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
             )
-            .shadow(color: .black.opacity(0.22), radius: 16, y: 6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 24)
+                    .stroke(
+                        LinearGradient(
+                            colors: [.white.opacity(0.25), .white.opacity(0.05), .white.opacity(0.15)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.8
+                    )
+            )
+            .shadow(color: .black.opacity(0.25), radius: 20, y: 8)
     }
 
     private var compactBackground: some View {

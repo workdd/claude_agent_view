@@ -8,6 +8,12 @@ struct AgentCharacterView: View {
     @State private var showNamePopup = false
     @State private var isBlinking = false
 
+    private let imageService = CharacterImageService.shared
+
+    private var useImages: Bool {
+        imageService.hasImages(for: agent.character)
+    }
+
     private var phaseOffset: Double {
         Double(agent.name.hashValue & 0xFF) / 40.0
     }
@@ -58,25 +64,35 @@ struct AgentCharacterView: View {
 
     private var compactView: some View {
         ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [outfitLight, outfitColor],
-                        center: .init(x: 0.35, y: 0.30),
-                        startRadius: 0, endRadius: 18
+            if useImages, let nsImage = imageService.image(for: agent.character, status: agent.status) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.3), lineWidth: 1))
+            } else {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [outfitLight, outfitColor],
+                            center: .init(x: 0.35, y: 0.30),
+                            startRadius: 0, endRadius: 18
+                        )
                     )
-                )
-                .frame(width: 36, height: 36)
-                .overlay(Circle().stroke(Color.white.opacity(0.3), lineWidth: 1))
+                    .frame(width: 36, height: 36)
+                    .overlay(Circle().stroke(Color.white.opacity(0.3), lineWidth: 1))
 
-            VStack(spacing: 1) {
-                HStack(spacing: 4) {
-                    Circle().fill(Color(white: 0.2)).frame(width: 3, height: 3)
-                    Circle().fill(Color(white: 0.2)).frame(width: 3, height: 3)
+                VStack(spacing: 1) {
+                    HStack(spacing: 4) {
+                        Circle().fill(Color(white: 0.2)).frame(width: 3, height: 3)
+                        Circle().fill(Color(white: 0.2)).frame(width: 3, height: 3)
+                    }
+                    Capsule()
+                        .fill(Color(red: 0.9, green: 0.5, blue: 0.45))
+                        .frame(width: 5, height: 2)
                 }
-                Capsule()
-                    .fill(Color(red: 0.9, green: 0.5, blue: 0.45))
-                    .frame(width: 5, height: 2)
             }
 
             Circle()
@@ -97,27 +113,46 @@ struct AgentCharacterView: View {
 
     private var fullView: some View {
         ZStack(alignment: .top) {
-            // 3D Animated Character
-            TimelineView(.animation) { context in
-                let t = context.date.timeIntervalSinceReferenceDate + phaseOffset
-                let speed = statusAnimSpeed
-                let intensity = statusAnimIntensity
+            if useImages {
+                // Image-based character with floating animation
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+                    let t = context.date.timeIntervalSinceReferenceDate + phaseOffset
+                    let speed = statusAnimSpeed
+                    let intensity = statusAnimIntensity
 
-                let floatY = sin(t * 1.5 * speed) * 5.0 * intensity
-                let tiltX = sin(t * 0.8 * speed) * 3.5 * intensity
-                let tiltY = cos(t * 0.6 * speed) * 2.5 * intensity
-                let breathe = 1.0 + sin(t * 1.2 * speed) * 0.02 * intensity
-                let shadowShrink = 1.0 - abs(sin(t * 1.5 * speed)) * 0.12
+                    let floatY = sin(t * 1.5 * speed) * 4.0 * intensity
+                    let tiltY = cos(t * 0.6 * speed) * 1.5 * intensity
+                    let breathe = 1.0 + sin(t * 1.2 * speed) * 0.015 * intensity
+                    let shadowShrink = 1.0 - abs(sin(t * 1.5 * speed)) * 0.10
 
-                // Trigger blink randomly
-                let _ = triggerBlinkIfNeeded(t: t)
+                    imageCharacterScene(
+                        floatY: floatY, tiltY: tiltY,
+                        breathe: breathe, shadowShrink: shadowShrink
+                    )
+                }
+                .padding(.top, 40)
+            } else {
+                // Shape-based fallback character
+                TimelineView(.animation) { context in
+                    let t = context.date.timeIntervalSinceReferenceDate + phaseOffset
+                    let speed = statusAnimSpeed
+                    let intensity = statusAnimIntensity
 
-                characterScene(
-                    floatY: floatY, tiltX: tiltX, tiltY: tiltY,
-                    breathe: breathe, shadowShrink: shadowShrink
-                )
+                    let floatY = sin(t * 1.5 * speed) * 5.0 * intensity
+                    let tiltX = sin(t * 0.8 * speed) * 3.5 * intensity
+                    let tiltY = cos(t * 0.6 * speed) * 2.5 * intensity
+                    let breathe = 1.0 + sin(t * 1.2 * speed) * 0.02 * intensity
+                    let shadowShrink = 1.0 - abs(sin(t * 1.5 * speed)) * 0.12
+
+                    let _ = triggerBlinkIfNeeded(t: t)
+
+                    characterScene(
+                        floatY: floatY, tiltX: tiltX, tiltY: tiltY,
+                        breathe: breathe, shadowShrink: shadowShrink
+                    )
+                }
+                .padding(.top, 70)
             }
-            .padding(.top, 70)
 
             // Always-visible status + tool label
             statusLabel
@@ -138,7 +173,7 @@ struct AgentCharacterView: View {
                     .zIndex(10)
             }
         }
-        .frame(width: 130, height: 240)
+        .frame(width: useImages ? 160 : 130, height: useImages ? 220 : 240)
         .onHover { hovering in
             isHovered = hovering
             withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
@@ -221,7 +256,50 @@ struct AgentCharacterView: View {
         }
     }
 
-    // MARK: - 3D Character Scene
+    // MARK: - Image-Based Character Scene
+
+    private func imageCharacterScene(
+        floatY: Double, tiltY: Double,
+        breathe: Double, shadowShrink: Double
+    ) -> some View {
+        ZStack {
+            // Floor shadow (softer for image characters)
+            Ellipse()
+                .fill(
+                    RadialGradient(
+                        colors: [Color.black.opacity(0.20), Color.black.opacity(0.06), Color.clear],
+                        center: .center, startRadius: 0, endRadius: 40
+                    )
+                )
+                .frame(width: 80 * shadowShrink, height: 16 * shadowShrink)
+                .offset(y: 62)
+
+            // Character images with crossfade between states
+            ZStack {
+                ForEach(AgentStatus.allCases, id: \.self) { status in
+                    if let nsImage = imageService.image(for: agent.character, status: status) {
+                        Image(nsImage: nsImage)
+                            .resizable()
+                            .interpolation(.high)
+                            .aspectRatio(contentMode: .fit)
+                            .opacity(agent.status == status ? 1.0 : 0.0)
+                    }
+                }
+            }
+            .frame(width: 140, height: 140)
+            .offset(y: CGFloat(floatY) - 8)
+            .scaleEffect(CGFloat(breathe))
+            .rotation3DEffect(.degrees(tiltY), axis: (x: 0, y: 1, z: 0), perspective: 0.8)
+            .animation(.easeInOut(duration: 0.5), value: agent.status)
+        }
+        .scaleEffect(isHovered ? 1.05 : 0.92)
+        .rotation3DEffect(.degrees(isHovered ? -6 : 0), axis: (x: 1, y: 0, z: 0), anchor: .bottom, perspective: 0.6)
+        .rotation3DEffect(.degrees(isHovered ? 2 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.8)
+        .shadow(color: .black.opacity(0.15), radius: 12, x: 0, y: 8)
+        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: isHovered)
+    }
+
+    // MARK: - Shape-Based Character Scene (fallback)
 
     private func characterScene(
         floatY: Double, tiltX: Double, tiltY: Double,
